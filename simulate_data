@@ -1,0 +1,209 @@
+"""Generate a fictional Excel dataset with selected infection-research fields."""
+
+import random
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+import pandas as pd
+from faker import Faker
+from openpyxl.worksheet.table import Table, TableStyleInfo
+
+
+OUTPUT_FILE = Path(__file__).with_name(
+    "synthetic_infection_research_selected_fields.xlsx"
+)
+START_DATE = date(2016, 1, 1)
+END_DATE = date(2025, 12, 31)
+
+fake = Faker("en_GB")
+
+COLUMNS = (
+    "microbiology_datetime_collected",
+    "microbiology_datetime_reported",
+    "microbiology_datetime_stored",
+    "microbiology_orderer_id",
+    "collected_datetime",
+    "reported_datetime",
+    "haematology_specimen_location",
+    "haematology_orderer_id",
+    "prescription_location",
+    "prescriber_id",
+    "start_datetime",
+    "end_datetime",
+    "administration_datetime",
+    "nhs_number",
+    "postcode",
+    "admission_datetime",
+    "admission_location",
+    "transfer_datetime",
+    "transfer_location",
+    "date_of_birth",
+    "date_of_death",
+    "radiology_study_datetime",
+    "observation_datetime",
+    "observation_location",
+    "clinical_encounter_datetime",
+)
+
+HOSPITALS = (
+    "Synthetic Liverpool Hospital",
+    "Synthetic Mersey Hospital",
+    "Synthetic Sefton Hospital",
+)
+WARDS = (
+    "Emergency Department",
+    "Acute Medical Unit",
+    "Critical Care Unit",
+    "Respiratory Ward",
+    "Surgical Ward",
+)
+
+
+def random_datetime(rng: random.Random, start: date, end: date) -> datetime:
+    """Return a reproducible random datetime within an inclusive date range."""
+    chosen_date = start + timedelta(days=rng.randint(0, (end - start).days))
+    return datetime.combine(chosen_date, time(rng.randrange(24), rng.randrange(60)))
+
+
+def synthetic_nhs_number(rng: random.Random) -> str:
+    """Create a 10-digit synthetic identifier with an intentionally invalid checksum."""
+    first_nine = f"{rng.randrange(1_000_000_000):09d}"
+    weighted_sum = sum(
+        int(digit) * weight for digit, weight in zip(first_nine, range(10, 1, -1))
+    )
+    remainder = weighted_sum % 11
+    check_digit = 11 - remainder
+    expected = 0 if check_digit == 11 else check_digit
+    if expected == 10:
+        expected = 0
+    return first_nine + str((expected + 1) % 10)
+
+
+def generate_mock_healthcare_data(num_records: int = 100) -> pd.DataFrame:
+    """Create fictional linked patient episodes using only the requested fields."""
+    if num_records < 1:
+        raise ValueError("num_records must be at least 1.")
+
+    rng = random.Random(42)
+    local_fake = Faker("en_GB")
+    local_fake.seed_instance(42)
+    patient_count = max(1, min(40, num_records // 2))
+    patients = {}
+    used_nhs_numbers = set()
+    patient_id_by_nhs_number = {}
+    for index in range(1, patient_count + 1):
+        nhs_number = synthetic_nhs_number(rng)
+        while nhs_number in used_nhs_numbers:
+            nhs_number = synthetic_nhs_number(rng)
+        used_nhs_numbers.add(nhs_number)
+        patient_id = f"SYN-{index:05d}"
+        patients[patient_id] = {
+            "nhs_number": nhs_number,
+            "postcode": local_fake.postcode().upper(),
+            "date_of_birth": local_fake.date_of_birth(
+                minimum_age=25, maximum_age=90
+            ),
+        }
+        patient_id_by_nhs_number[nhs_number] = patient_id
+
+    records = []
+    patient_ids = tuple(patients)
+    for _ in range(num_records):
+        patient_id = rng.choice(patient_ids)
+        patient = patients[patient_id]
+        earliest_admission = max(
+            START_DATE,
+            date(patient["date_of_birth"].year + 18, 1, 1),
+        )
+        admission_datetime = random_datetime(rng, earliest_admission, END_DATE)
+        end_datetime = admission_datetime + timedelta(
+            days=rng.randint(3, 14), hours=rng.randint(1, 20)
+        )
+        microbiology_datetime_collected = admission_datetime + timedelta(
+            hours=rng.randint(1, 48)
+        )
+        microbiology_datetime_reported = microbiology_datetime_collected + timedelta(
+            hours=rng.randint(4, 72)
+        )
+        microbiology_datetime_stored = microbiology_datetime_collected + timedelta(
+            minutes=rng.randint(1, 30)
+        )
+        start_datetime = admission_datetime + timedelta(hours=rng.randint(0, 8))
+        transfer_datetime = None
+        transfer_location = None
+        if rng.random() < 0.35:
+            transfer_datetime = admission_datetime + timedelta(
+                hours=rng.randint(1, 48)
+            )
+            transfer_location = rng.choice(WARDS[1:])
+
+        records.append(
+            {
+                "microbiology_datetime_collected": microbiology_datetime_collected,
+                "microbiology_datetime_reported": microbiology_datetime_reported,
+                "microbiology_datetime_stored": microbiology_datetime_stored,
+                "microbiology_orderer_id": f"MIC-ORD-{rng.randint(1, 25):03d}",
+                "collected_datetime": microbiology_datetime_collected,
+                "reported_datetime": microbiology_datetime_reported,
+                "haematology_specimen_location": rng.choice(WARDS),
+                "haematology_orderer_id": f"HAE-ORD-{rng.randint(1, 25):03d}",
+                "prescription_location": rng.choice(WARDS),
+                "prescriber_id": f"PRES-{rng.randint(1, 30):03d}",
+                "start_datetime": start_datetime,
+                "end_datetime": end_datetime,
+                "administration_datetime": start_datetime
+                + timedelta(minutes=rng.randint(15, 180)),
+                "nhs_number": patient["nhs_number"],
+                "postcode": patient["postcode"],
+                "admission_datetime": admission_datetime,
+                "admission_location": rng.choice(HOSPITALS),
+                "transfer_datetime": transfer_datetime,
+                "transfer_location": transfer_location,
+                "date_of_birth": patient["date_of_birth"],
+                "date_of_death": None,
+                "radiology_study_datetime": admission_datetime
+                + timedelta(hours=rng.randint(1, 36)),
+                "observation_datetime": admission_datetime
+                + timedelta(hours=rng.randint(0, 12)),
+                "observation_location": rng.choice(WARDS),
+                "clinical_encounter_datetime": admission_datetime,
+            }
+        )
+
+    last_episode_by_patient = {}
+    for record in records:
+        patient_id = patient_id_by_nhs_number[record["nhs_number"]]
+        current_end = record["end_datetime"]
+        previous_end = last_episode_by_patient.get(patient_id)
+        if previous_end is None or current_end > previous_end:
+            last_episode_by_patient[patient_id] = current_end
+
+    for patient_id, last_end in last_episode_by_patient.items():
+        if rng.random() < 0.05:
+            death_date = (last_end + timedelta(days=rng.randint(1, 365))).date()
+            nhs_number = patients[patient_id]["nhs_number"]
+            for record in records:
+                if record["nhs_number"] == nhs_number:
+                    record["date_of_death"] = death_date
+
+    return pd.DataFrame(records, columns=COLUMNS).sort_values(
+        ["nhs_number", "admission_datetime"], ignore_index=True
+    )
+
+
+if __name__ == "__main__":
+    df = generate_mock_healthcare_data(50)
+    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Infection research")
+        worksheet = writer.sheets["Infection research"]
+        worksheet.freeze_panes = "A2"
+        table = Table(displayName="InfectionResearchData", ref=worksheet.dimensions)
+        table.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        worksheet.add_table(table)
+    print(f"Created {OUTPUT_FILE.name} with {len(df)} synthetic episodes.")
