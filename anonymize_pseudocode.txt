@@ -1,0 +1,90 @@
+PSEUDOCODE: anonymize.py
+
+Purpose
+-------
+Read synthetic_infection_research_selected_fields.xlsx, anonymise the selected
+infection-research data, and save anonymized_infection_research.xlsx. Never
+overwrite the input workbook.
+
+Configuration
+-------------
+Use the workbook paths beside the script. The input must contain exactly these
+25 columns, with no additional columns:
+    microbiology_datetime_collected, microbiology_datetime_reported,
+    microbiology_datetime_stored, microbiology_orderer_id, collected_datetime,
+    reported_datetime, haematology_specimen_location,
+    haematology_orderer_id, prescription_location, prescriber_id,
+    start_datetime, end_datetime, administration_datetime, nhs_number,
+    postcode, admission_datetime, admission_location, transfer_datetime,
+    transfer_location, date_of_birth, date_of_death,
+    radiology_study_datetime, observation_datetime, observation_location,
+    clinical_encounter_datetime
+
+The configured event dates are all of the date/time fields above except
+date_of_birth. Pseudonymise the NHS number and three staff/orderer ID fields.
+Map ward terms to broad groups using WARD_GROUPS.
+
+Main procedure
+--------------
+1. Read ANONYMIZATION_KEY from the environment.
+   If it is absent or shorter than 32 characters, stop with an error.
+   Use the key for repeatable pseudonyms and patient-specific date offsets.
+
+2. Open the input workbook.
+   Require exactly one worksheet.
+   Read the first row as headers.
+   Stop if any header is empty or duplicated.
+
+3. Validate the headers.
+   Require all 25 configured fields.
+   Stop if any field is missing or any additional field is present.
+
+4. For every data row:
+   a. Require a non-empty NHS number and parse admission_datetime.
+   b. Before shifting admission_datetime, use the secret key, original NHS
+      number, and original admission year to pseudorandomly choose the position
+      of that year within a three-year group. Use the same group for the same
+      patient and original year. The original year may be the first, middle,
+      or last year; for 2017, possible groups are 2017-2019, 2016-2018, or
+      2015-2017. Do not derive this group from the shifted date.
+   c. If date_of_birth is present, calculate age at admission from the original
+      dates. Stop if the birth date is invalid or after admission. Replace it
+      with age in years, or "≥100" when the age is 100 or older.
+   d. Derive one repeatable pseudorandom offset from 1 through 50,000 days
+      (inclusive) for this patient, using the original NHS number and secret
+      key. Reuse that offset for every row belonging to this patient.
+   e. Add the same offset to every present activity/event date-time field and
+      date_of_death. Do not shift date_of_birth; it has been replaced with age.
+      This preserves within-patient intervals, but not calendar comparisons
+      between different patients.
+   f. For a non-empty admission_location, use "Hospital". Map each non-empty
+      haematology_specimen_location, prescription_location,
+      transfer_location, and observation_location to its configured broad care
+      group. Leave empty locations unchanged. Stop if a non-empty location
+      cannot be mapped or matches conflicting groups.
+   g. Replace a valid full UK postcode with its outward area. Leave an empty
+      postcode unchanged; stop if a non-empty postcode cannot be recognised.
+   h. Replace the original NHS number with a stable, keyed STUDY identifier.
+   i. Replace each present microbiology_orderer_id, haematology_orderer_id,
+      and prescriber_id with a stable, keyed pseudonym.
+
+5. Rename transformed headers:
+       nhs_number    -> remains nhs_number, but contains a STUDY pseudonym
+       postcode      -> postcode_area
+       date_of_birth -> age_at_admission
+   Append admission_year_group to the output as a new column. Keep all other
+   headers and columns in their existing order. Include the new field in any
+   Excel Table and keep its column labels aligned with worksheet headers.
+
+6. Save as anonymized_infection_research.xlsx and report success.
+
+Important notes
+---------------
+- Keep ANONYMIZATION_KEY separate from the workbook.
+- Reuse the same key when matching pseudonyms and patient-specific date shifts
+  across workbooks are required.
+- Generated NHS numbers in the synthetic input are fictional and are not
+  valid NHS numbers. The keyed study identifiers in the output are not NHS
+  numbers.
+- Empty optional event dates and locations remain empty.
+- Date shifting and pseudonymisation alone do not guarantee anonymisation.
