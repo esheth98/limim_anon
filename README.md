@@ -2,7 +2,7 @@
 
 A Python demonstration project that generates fictional infection-research data and creates an anonymised Excel workbook from it.
 
-> **Data notice:** The generated records are synthetic and intended for software demonstration only. They are not real patient data or a clinically validated dataset. This project does not guarantee anonymisation or replace a formal data-protection review.
+> **Data notice:** The generated records are synthetic and intended for anonymization process demonstration only. They are not real patient data or a clinically validated dataset. 
 
 ## What the project does
 
@@ -68,4 +68,4 @@ Keep the key secret and store it securely. Reuse the same key only when you need
 - The sample NHS numbers are fictional and intentionally fail NHS-number checksum validation. The output study IDs are not NHS numbers.
 - Date shifting preserves intervals within each patient but changes the calendar dates; do not use shifted dates for comparisons between patients.
 - `admission_year_group` is a broad range derived from the original admission year, not from the shifted date.
-- Pseudonymisation and date shifting alone do not guarantee that real data is anonymous. Follow your organisation’s data-governance requirements before using or sharing real data.
+
